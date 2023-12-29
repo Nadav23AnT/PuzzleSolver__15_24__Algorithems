@@ -2,8 +2,8 @@
 
 This project implements and compares three different algorithms: Breadth-First Search (BFS), Dijkstra's Algorithm (simulated using A* with a zero heuristic), and the A* algorithm with various heuristics, for solving the "Puzzle 15" and "Puzzle 24" games.
 
+![alt text](https://github.com/Nadav23AnT/PuzzleSolver__15_24__Algorithems/blob/main/image_01.png)
 ## Overview
-
 The "Puzzle 15" and "Puzzle 24" are sliding puzzles consisting of a frame of numbered square tiles in random order with one tile missing. The objective is to place the tiles in order by making sliding moves that use the empty space.
 
 This project aims to explore and analyze the performance of three fundamental pathfinding algorithms:
@@ -36,3 +36,5 @@ This project aims to explore and analyze the performance of three fundamental pa
 
    ```sh
    git clone https://github.com/your-username/PuzzleSolver__15_24__Algorithems.git
+
+![alt text](https://github.com/Nadav23AnT/PuzzleSolver__15_24__Algorithems/blob/main/image_02.png)
