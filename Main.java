@@ -1,96 +1,257 @@
-import java.util.Scanner;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Function;
 
 public class Main {
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
+  private static JTextArea textArea;
+  private static JLabel clockLabel;
+  private static Timer timer;
+  private static long startTime;
+  private static JButton resetButton;
+  private static JButton solveButton;
+  private static JTextField numShakesField;
 
-        // Choose the puzzle type
-        System.out.println("--- Welcome to Nadav's Puzzle Solver !! (BFS , DIJ , AStar) ---");
-        System.out.println("Choose the puzzle type (15 or 24): ");
-        int puzzleType = scanner.nextInt();
-        int size = (puzzleType == 15) ? 4 : 5;
+  public static void main(String[] args) {
+    JFrame frame = new JFrame("Nadav's Puzzle Solver");
+    frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    frame.setSize(700, 600);
 
-        // Choose board initialization method
-        System.out.println("Enter 1 to input the board manually, 2 for a random board: ");
-        int choice = scanner.nextInt();
+    JPanel inputPanel = new JPanel();
+    JComboBox<String> puzzleTypeComboBox = new JComboBox<>(new String[] { "15", "24" });
+    JComboBox<String> initializationMethodComboBox = new JComboBox<>(new String[] { "Manually", "Random" });
+    solveButton = new JButton("Solve");
+    resetButton = new JButton("Reset");
+    resetButton.setEnabled(false);
+    clockLabel = new JLabel("Time: 0s");
+    numShakesField = new JTextField(5); // Input field for the number of shakes
+    numShakesField.setText("30"); // Default value
 
-        PuzzleBoard startBoard;
-        if (choice == 1) {
-            startBoard = manuallyEnterBoard(scanner, size);
-        } else {
-            startBoard = createRandomBoard(size, 20);
-        }
-        
-        // Further processing (e.g., solving the puzzle) goes here
-        PuzzleGraph puzzleSolver = new PuzzleGraph(startBoard);
-        System.out.println("Start Vertex:");
-        startBoard.printBoard();
-  
-        // Checking BFS Algorithem
-        System.out.println("--> Checking BFS Algorithem:");
-        puzzleSolver.solveUsingBFS();
-        // Checking AStar Algorithem
-        System.out.println("--> Checking AStar Algorithem:");
-        runAndMeasure(puzzleSolver, PuzzleGraph.zeroFunction, "Zero Function (Dijkstra's)");
-        puzzleSolver.setInitialState(new PuzzleBoard(startBoard)); // Reset the board
-        runAndMeasure(puzzleSolver, PuzzleGraph.manhattanDistance, "Manhattan Distance");
-        puzzleSolver.setInitialState(new PuzzleBoard(startBoard)); // Reset the board
-        runAndMeasure(puzzleSolver, PuzzleGraph.inadmissibleHeuristic, "Inadmissible Heuristic");
-        
-        
+    inputPanel.add(new JLabel("Puzzle type:"));
+    inputPanel.add(puzzleTypeComboBox);
+    inputPanel.add(new JLabel("Initialization:"));
+    inputPanel.add(initializationMethodComboBox);
+    inputPanel.add(new JLabel("Num shakes:"));
+    inputPanel.add(numShakesField);
+    inputPanel.add(solveButton);
+    inputPanel.add(resetButton);
+    inputPanel.add(clockLabel);
 
-        // Close the scanner
-        scanner.close();
+    textArea = new JTextArea(25, 50);
+    textArea.setEditable(false);
+    JScrollPane scrollPane = new JScrollPane(textArea);
+
+    frame.getContentPane().add(BorderLayout.NORTH, inputPanel);
+    frame.getContentPane().add(BorderLayout.CENTER, scrollPane);
+
+    solveButton.addActionListener(new AbstractAction() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        runSolver(puzzleTypeComboBox, initializationMethodComboBox);
+      }
+    });
+
+    resetButton.addActionListener(e -> reset());
+    timer = new Timer(1000, e -> updateClock());
+    frame.setVisible(true);
+  }
+
+  private static void runSolver(JComboBox<String> puzzleTypeComboBox, JComboBox<String> initializationMethodComboBox) {
+    int puzzleType = Integer.parseInt((String) puzzleTypeComboBox.getSelectedItem());
+    int size = (puzzleType == 15) ? 4 : 5;
+
+    PuzzleBoard startBoard;
+    if ("Manually".equals(initializationMethodComboBox.getSelectedItem())) {
+      startBoard = manuallyEnterBoard(size);
+    } else {
+      int numShakes = Integer.parseInt(numShakesField.getText().trim());
+      startBoard = createRandomBoard(size, numShakes);
     }
 
-    private static void runAndMeasure(PuzzleGraph puzzleSolver, Function<PuzzleBoard, Integer> heuristic,
-            String heuristicName) {
-        System.out.println("Testing with " + heuristicName + "\n");
-        long startTime = System.nanoTime();
-        puzzleSolver.solveUsingAStar(heuristic);
-        long endTime = System.nanoTime();
-        long duration = (endTime - startTime) / 1_000_000; // Convert to milliseconds
-        System.out.println(heuristicName + " - Time taken: " + duration + " ms\n");
+    textArea.setText("");
+    PuzzleGraph puzzleSolver = new PuzzleGraph(startBoard);
+    textArea.append("Start Vertex:\n");
+    startBoard.printBoard(textArea);
+
+    startTime = System.currentTimeMillis();
+    timer.start();
+    resetButton.setEnabled(true);
+
+    new Thread(() -> {
+      solveButton.setEnabled(false);
+      executeSolvingAlgorithms(puzzleSolver);
+      solveButton.setEnabled(true);
+      timer.stop();
+    }).start();
+  }
+
+  public static Stats runSolverNonGUI(int puzzleSize, int numShakes, String algorithm) {
+    if (textArea == null) {
+      textArea = new JTextArea();
     }
 
-    private static PuzzleBoard manuallyEnterBoard(Scanner scanner, int size) {
-        int[][] board = new int[size][size];
-        System.out.println("Enter the board row by row:");
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                board[i][j] = scanner.nextInt();
-            }
-        }
-        return new PuzzleBoard(size, board);
+    int size = puzzleSize == 15 ? 4 : 5;
+    PuzzleBoard board = createRandomBoard(size, numShakes);
+    PuzzleGraph puzzleSolver = new PuzzleGraph(board);
+
+    long startTime = System.currentTimeMillis();
+    switch (algorithm) {
+      case "BFS":
+        puzzleSolver.solveUsingBFS(textArea);
+        break;
+      case "DFS":
+        puzzleSolver.solveUsingAStar(PuzzleGraph.zeroFunction, textArea);
+        break;
+      case "A*":
+        puzzleSolver.solveUsingAStar(PuzzleGraph.manhattanDistance, textArea);
+        break;
+      case "A* Non-Admissible":
+        puzzleSolver.solveUsingAStar(PuzzleGraph.nonAdmissibleHeuristic, textArea);
+        break;
+      // Add more cases as necessary
+    }
+    long endTime = System.currentTimeMillis();
+
+    int statesProcessed = extractNumberFromString(textArea.getText(), "States processed: ");
+    int movementsMade = extractNumberFromString(textArea.getText(), "Movements made: ");
+    long duration = endTime - startTime;
+
+    return new Stats(duration, statesProcessed, movementsMade);
+  }
+
+  private static int extractNumberFromString(String text, String label) {
+    int startIndex = text.indexOf(label) + label.length();
+    int endIndex = text.indexOf('\n', startIndex);
+    if (startIndex < 0 || endIndex < 0)
+      return 0; // Label not found or no newline after number
+    String numberStr = text.substring(startIndex, endIndex).trim();
+    try {
+      return Integer.parseInt(numberStr);
+    } catch (NumberFormatException e) {
+      e.printStackTrace();
+      return 0;
+    }
+  }
+
+  private static void executeSolvingAlgorithms(PuzzleGraph puzzleSolver) {
+    SwingUtilities.invokeLater(() -> textArea.append("--> Checking BFS Algorithm:\n"));
+    puzzleSolver.solveUsingBFS(textArea);
+
+    SwingUtilities
+        .invokeLater(() -> textArea.append("--> Checking AStar Algorithm with Zero Function (Dijkstra's):\n"));
+    try {
+      Thread.sleep(100); // Small delay to ensure the title is printed before the result
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    puzzleSolver.solveUsingAStar(PuzzleGraph.zeroFunction, textArea);
+
+    SwingUtilities.invokeLater(() -> textArea.append("--> Checking AStar Algorithm with Manhattan Distance:\n"));
+    try {
+      Thread.sleep(100); // Small delay
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    puzzleSolver.solveUsingAStar(PuzzleGraph.manhattanDistance, textArea);
+
+    SwingUtilities.invokeLater(() -> textArea.append("--> Checking AStar Algorithm with Non-Admissible Heuristic:\n"));
+    try {
+      Thread.sleep(100); // Small delay
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    puzzleSolver.solveUsingAStar(PuzzleGraph.nonAdmissibleHeuristic, textArea);
+  }
+
+  private static void updateClock() {
+    long elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000;
+    clockLabel.setText("Time: " + elapsedSeconds + "s");
+  }
+
+  private static void reset() {
+    timer.stop();
+    textArea.setText("");
+    clockLabel.setText("Time: 0s");
+    resetButton.setEnabled(false);
+    solveButton.setEnabled(true);
+  }
+
+  private static PuzzleBoard createRandomBoard(int size, int maxMoves) {
+    int[][] solvedBoard = new int[size][size];
+    int num = 1;
+    for (int i = 0; i < size; i++) {
+      for (int j = 0; j < size; j++) {
+        solvedBoard[i][j] = num++;
+      }
+    }
+    solvedBoard[size - 1][size - 1] = 0;
+
+    PuzzleBoard board = new PuzzleBoard(size, solvedBoard);
+    Random random = new Random();
+    int moves = random.nextInt(maxMoves + 1);
+
+    for (int i = 0; i < moves; i++) {
+      List<PuzzleBoard> neighbors = board.generateNeighbors();
+      board = neighbors.get(random.nextInt(neighbors.size()));
     }
 
-    private static PuzzleBoard createRandomBoard(int size, int maxMoves) {
-        // Generate the solved board
-        int[][] solvedBoard = new int[size][size];
-        int num = 1;
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                solvedBoard[i][j] = num++;
-            }
-        }
-        solvedBoard[size - 1][size - 1] = 0; // Empty space
+    return board;
+  }
 
-        PuzzleBoard board = new PuzzleBoard(size, solvedBoard);
+  private static PuzzleBoard manuallyEnterBoard(int size) {
+    JDialog inputDialog = new JDialog();
+    inputDialog.setModal(true);
+    inputDialog.setLayout(new GridLayout(size + 1, size));
+    JTextField[][] textFields = new JTextField[size][size];
 
-        // Randomly decide the number of moves for shuffling
-        Random random = new Random();
-        int moves = random.nextInt(maxMoves + 1);
-
-        // Apply random moves
-        for (int i = 0; i < moves; i++) {
-            List<PuzzleBoard> neighbors = board.generateNeighbors();
-            board = neighbors.get(random.nextInt(neighbors.size()));
-        }
-
-        return board;
+    for (int i = 0; i < size; i++) {
+      for (int j = 0; j < size; j++) {
+        JTextField textField = new JTextField(2);
+        textFields[i][j] = textField;
+        inputDialog.add(textField);
+      }
     }
 
+    JButton submitButton = new JButton("Submit");
+    inputDialog.add(submitButton);
+    submitButton.addActionListener(e -> {
+      int[][] board = new int[size][size];
+      for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+          try {
+            board[i][j] = Integer.parseInt(textFields[i][j].getText().trim());
+          } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(inputDialog, "Invalid input. Please enter numbers only.");
+            return;
+          }
+        }
+      }
+      inputDialog.dispose();
+    });
+
+    inputDialog.pack();
+    inputDialog.setVisible(true);
+
+    int[][] board = new int[size][size];
+    for (int i = 0; i < size; i++) {
+      for (int j = 0; j < size; j++) {
+        board[i][j] = Integer.parseInt(textFields[i][j].getText().trim());
+      }
+    }
+    return new PuzzleBoard(size, board);
+  }
+}
+
+// A simple container class to hold statistics
+class Stats {
+  long time;
+  int statesProcessed;
+  int movementsMade;
+
+  public Stats(long time, int statesProcessed, int movementsMade) {
+    this.time = time;
+    this.statesProcessed = statesProcessed;
+    this.movementsMade = movementsMade;
+  }
 }
